@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D 天気図プロトタイプ</title>
+  <style>
+    body { 
+      margin: 0; 
+      overflow: hidden; 
+      background-color: #1e1e24; 
+      font-family: 'Helvetica Neue', Arial, sans-serif; 
+    }
+    #ui { 
+      position: absolute; 
+      top: 20px; 
+      left: 20px; 
+      color: #fff; 
+      background: rgba(20, 20, 25, 0.8); 
+      padding: 20px; 
+      border-radius: 12px; 
+      box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+      z-index: 10; 
+      backdrop-filter: blur(5px);
+    }
+    h3 { margin: 0 0 15px 0; font-size: 18px; font-weight: normal; }
+    button { 
+      margin-top: 15px; 
+      padding: 10px 15px; 
+      cursor: pointer; 
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-weight: bold;
+      transition: background-color 0.2s;
+    }
+    button:hover { background-color: #45a049; }
+    label { display: block; margin-top: 10px; font-size: 14px; }
+    input[type=range] { width: 100%; margin-top: 8px; }
+  </style>
+  
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="ui">
+    <h3>3D 気圧配置シミュレーター</h3>
+    <label>
+      起伏のスケール
+      <input type="range" id="scale-slider" min="0" max="3" step="0.1" value="1.2">
+    </label>
+    <button id="random-btn">気圧配置をランダム再生成</button>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // ==========================================
+    // 1. Three.js 基本セットアップ
+    // ==========================================
+    const scene = new THREE.Scene();
+    // フォグを追加して奥行き感を出す
+    scene.fog = new THREE.FogExp2(#1e1e24, 0.005);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    // 初期カメラ位置（斜め上から見下ろす）
+    camera.position.set(0, -60, 50);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    // マウス/タッチ操作設定
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.maxPolarAngle = Math.PI / 2 - 0.05; // 真下からは見えないように制限
+
+    // ==========================================
+    // 2. 地形（メッシュ）とマテリアルの作成
+    // ==========================================
+    const size = 120;
+    const segments = 200; // 頂点数を多くしてなめらかにする
+    const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
+    
+    // カスタムシェーダー（等圧線を描画し、高さで色を変える）
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        uElevationScale: { value: 1.2 } // スライダーと連動
+      },
+      vertexShader: `
+        uniform float uElevationScale;
+        varying float vElevation;
+        
+        void main() {
+          vElevation = position.z; // JSで計算した高さを取得
+          vec3 pos = position;
+          pos.z *= uElevationScale; // 立体感の強調
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+        }
+      `,
+      fragmentShader: `
+        varying float vElevation;
+        
+        void main() {
+          // 高さを元に 0.0 〜 1.0 の範囲に正規化（気圧の強弱に合わせる）
+          float h = clamp((vElevation + 12.0) / 24.0, 0.0, 1.0);
+          
+          // カラーマップ (低: 青, 中: 緑〜黄, 高: オレンジ〜赤)
+          vec3 colorLow = vec3(0.0, 0.4, 0.8);
+          vec3 colorMid1 = vec3(0.2, 0.7, 0.5);
+          vec3 colorMid2 = vec3(0.8, 0.8, 0.2);
+          vec3 colorHigh = vec3(0.9, 0.2, 0.1);
+
+          vec3 color;
+          if (h < 0.33) {
+            color = mix(colorLow, colorMid1, h * 3.0);
+          } else if (h < 0.66) {
+            color = mix(colorMid1, colorMid2, (h - 0.33) * 3.0);
+          } else {
+            color = mix(colorMid2, colorHigh, (h - 0.66) * 3.0);
+          }
+
+          // 等圧線（等高線）の描画ロジック
+          float interval = 1.5; // 線の間隔
+          float f = fract(vElevation / interval);
+          
+          // fwidthを利用して線の太さを画面上で一定にする（ジャギー防止）
+          float df = fwidth(vElevation / interval);
+          float line = smoothstep(df * 1.5, df * 0.5, min(f, 1.0 - f));
+          
+          // ベースカラーに白い等圧線を合成
+          color = mix(color, vec3(1.0, 1.0, 1.0), line * 0.8);
+
+          gl_FragColor = vec4(color, 1.0);
+        }
+      `,
+      side: THREE.DoubleSide
+    });
+
+    const plane = new THREE.Mesh(geometry, material);
+    scene.add(plane);
+
+    // ==========================================
+    // 3. 気圧配置ロジック（JavaScript側で高さを計算）
+    // ==========================================
+    function generateWeatherSystem() {
+      const positions = geometry.attributes.position;
+      const centers = [];
+      
+      // 4〜7個の高気圧・低気圧のコアをランダム生成
+      const numCenters = 4 + Math.floor(Math.random() * 4);
+      for (let i = 0; i < numCenters; i++) {
+        centers.push({
+          x: (Math.random() - 0.5) * size * 0.8,
+          y: (Math.random() - 0.5) * size * 0.8,
+          intensity: (Math.random() - 0.5) * 35, // プラスなら高気圧、マイナスなら低気圧
+          radius: 15 + Math.random() * 25      // 影響範囲
+        });
+      }
+
+      // すべての頂点をループして高さを計算（複数のガウス曲線を合成）
+      for (let i = 0; i < positions.count; i++) {
+        const vx = positions.getX(i);
+        const vy = positions.getY(i);
+        let height = 0;
+
+        for (const center of centers) {
+          const dx = vx - center.x;
+          const dy = vy - center.y;
+          const distanceSq = dx * dx + dy * dy;
+          // ガウス関数を利用してなめらかな山/谷を作る
+          height += center.intensity * Math.exp(-distanceSq / (center.radius * center.radius));
+        }
+        positions.setZ(i, height);
+      }
+      
+      // Three.jsに頂点情報が更新されたことを通知
+      positions.needsUpdate = true;
+    }
+
+    // 初回生成
+    generateWeatherSystem();
+
+    // ==========================================
+    // 4. イベントリスナー（UI操作・リサイズ）
+    // ==========================================
+    document.getElementById('random-btn').addEventListener('click', generateWeatherSystem);
+    
+    document.getElementById('scale-slider').addEventListener('input', (e) => {
+      material.uniforms.uElevationScale.value = parseFloat(e.
