@@ -82,9 +82,6 @@
     // マウス/タッチ操作設定
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-
-    // 上下に無限に回転できるように軸を読み替える
-    camera.up.set(1, 0, 0);
     
     // ==========================================
     // 2. 地形（メッシュ）とマテリアルの作成
