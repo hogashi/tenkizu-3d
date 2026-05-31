@@ -84,9 +84,6 @@
     controls.enableDamping = true;
     //controls.maxPolarAngle = Math.PI / 2 - 0.05; // 真下からは見えないように制限
 
-    // WebGL1の場合、明示的に拡張を有効化する必要がある
-    renderer.getContext().getExtension('OES_standard_derivatives');
-
     // ==========================================
     // 2. 地形（メッシュ）とマテリアルの作成
     // ==========================================
@@ -199,4 +196,24 @@
     document.getElementById('random-btn').addEventListener('click', generateWeatherSystem);
     
     document.getElementById('scale-slider').addEventListener('input', (e) => {
-      material.uniforms.uElevationScale.value = parseFloat(e.
+      material.uniforms.uElevationScale.value = parseFloat(e.target.value);
+    });
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // ==========================================
+    // 5. アニメーションループ
+    // ==========================================
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update(); // Damping用
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
