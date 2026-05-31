@@ -82,8 +82,10 @@
     // マウス/タッチ操作設定
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    //controls.maxPolarAngle = Math.PI / 2 - 0.05; // 真下からは見えないように制限
 
+    // 上下に無限に回転できるように軸を読み替える
+    camera.up.set(1, 0, 0);
+    
     // ==========================================
     // 2. 地形（メッシュ）とマテリアルの作成
     // ==========================================
