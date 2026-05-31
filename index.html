@@ -82,7 +82,10 @@
     // マウス/タッチ操作設定
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.maxPolarAngle = Math.PI / 2 - 0.05; // 真下からは見えないように制限
+    //controls.maxPolarAngle = Math.PI / 2 - 0.05; // 真下からは見えないように制限
+
+    // WebGL1の場合、明示的に拡張を有効化する必要がある
+    renderer.getContext().getExtension('OES_standard_derivatives');
 
     // ==========================================
     // 2. 地形（メッシュ）とマテリアルの作成
